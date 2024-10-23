@@ -21,7 +21,6 @@ class scrapper:
         options = webdriver.ChromeOptions()
         options.page_load_strategy = 'normal'
         options.add_argument('--disable-blink-features=AutomationControlled')
-        # options.add_experimental_option("detach", True)
 
         self.review_data = pd.DataFrame()
         self.urls = urls
@@ -164,7 +163,7 @@ class scrapper:
             print("Either page source structure has changed or incorrect url.")
             return pd.DataFrame()
 
-    def getReviews(self) -> pd.DataFrame:
+    def get_reviews(self) -> pd.DataFrame:
 
         for url in self.urls:
             url_data = self.scrape(url)
