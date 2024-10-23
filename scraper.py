@@ -15,7 +15,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 
 class scrapper:
 
-    pages = 2
+    pages = 3
     old_version_check = '/html/body/div[2]/div/div[2]/div[3]/div[1]/section/div[2]/div[4]/div/button'
     new_version_check = '/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]/button'
 
@@ -42,6 +42,23 @@ class scrapper:
     def upadate_new_version_check(cls, upadated_new_version) -> None:
         cls.new_version_check = upadated_new_version
 
+    def find_spoilers(self):
+        
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "ipc-btn.ipc-btn--single-padding.ipc-btn--center-align-content.ipc-btn--default-height.ipc-btn--core-base.ipc-btn--theme-base.ipc-btn--on-error.ipc-btn--rounded.ipc-text-button.sc-77f6e511-1.ffVQZx.review-spoiler-button")))
+
+        spoiler_spans = self.driver.find_elements(By.CLASS_NAME,"ipc-icon.ipc-icon--expand-more.ipc-btn__icon.ipc-btn__icon--post")
+        
+        spoiler_buttons = self.driver.find_elements(By.CLASS_NAME, "ipc-btn.ipc-btn--single-padding.ipc-btn--center-align-content.ipc-btn--default-height.ipc-btn--core-base.ipc-btn--theme-base.ipc-btn--on-error.ipc-btn--rounded.ipc-text-button.sc-77f6e511-1.ffVQZx.review-spoiler-button")
+
+        return zip(spoiler_buttons,spoiler_spans)
+
+    def open_spoilers(self):
+
+        spoilers = self.find_spoilers()
+
+        for find,click in spoilers:
+                ActionChains(self.driver).move_to_element(find).click(click).perform()
+
     def scrape(self, url : str) -> pd.DataFrame:
 
         self.driver.get(url)
@@ -67,7 +84,7 @@ class scrapper:
         if version_check == "old":
             load_more_button = self.driver.find_element(By.CLASS_NAME,'ipl-load-more__button')
     
-            for page in range(self.pages-1):
+            for page in range(self.pages):
                 try:
                     load_more_button.click()
                     WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.CLASS_NAME, "ipl-load-more__button")))
@@ -101,13 +118,16 @@ class scrapper:
 
         elif version_check == "new":
 
+            self.open_spoilers()
+            
             more_button_span = self.driver.find_element(By.XPATH, "/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]")
             load_more_button = self.driver.find_element(By.XPATH, "/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]/button/span")
 
-            for page in range(self.pages-1):
+            for page in range(self.pages):
                 try:
                     ActionChains(self.driver).move_to_element(more_button_span).click(load_more_button).perform()
-                    WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.XPATH, "/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]/button")))
+                    WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, "/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]/button")))
+                    self.open_spoilers()
                 except ElementNotInteractableException:
                     continue
                 except NoSuchElementException:
