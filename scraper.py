@@ -176,6 +176,6 @@ class scrapper:
 if __name__ == "__main__":
     urls = ['https://www.imdb.com/title/tt1745960/reviews/?ref_=tt_ql_urv']
     ws = scrapper(urls)
-    data = ws.getReviews()
+    data = ws.get_reviews()
     if not data.empty:
         print(data)
