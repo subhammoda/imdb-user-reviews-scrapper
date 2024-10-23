@@ -11,13 +11,10 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 import re
 from selenium.webdriver.common.action_chains import ActionChains
-# import old_version_xpaths
 
 class scrapper:
 
-    pages = 3
-    old_version_check = '/html/body/div[2]/div/div[2]/div[3]/div[1]/section/div[2]/div[4]/div/button'
-    new_version_check = '/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]/button'
+    page_limit = 3
 
     def __init__(self, urls : list) -> None:
         
@@ -31,18 +28,23 @@ class scrapper:
         self.driver = webdriver.Chrome(options=options)
 
     @classmethod
-    def upadate_pages(cls, upadated_pages) -> None:
-        cls.pages = upadated_pages
+    def upadate_page_limit(cls, upadated_page_limit : int) -> None:
+        cls.page_limit = upadated_page_limit
 
-    @classmethod
-    def upadate_old_version_check(cls, upadated_old_version) -> None:
-        cls.old_version_check = upadated_old_version
-    
-    @classmethod
-    def upadate_new_version_check(cls, upadated_new_version) -> None:
-        cls.new_version_check = upadated_new_version
+    def load_more_pages(self, click : str, focus : str = None) -> None:
+        
+        if focus:     
+            hover = self.driver.find_element(By.CLASS_NAME, focus)
+            button = self.driver.find_element(By.CLASS_NAME, click)
+            ActionChains(self.driver).move_to_element(hover).click(button).perform()
+            WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, focus)))
+        
+        else:
+            button = self.driver.find_element(By.CLASS_NAME, click)
+            ActionChains(self.driver).move_to_element(button).click(button).perform()
+            WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, button)))
 
-    def find_spoilers(self):
+    def find_spoilers(self) -> zip:
         
         WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "ipc-btn.ipc-btn--single-padding.ipc-btn--center-align-content.ipc-btn--default-height.ipc-btn--core-base.ipc-btn--theme-base.ipc-btn--on-error.ipc-btn--rounded.ipc-text-button.sc-77f6e511-1.ffVQZx.review-spoiler-button")))
 
@@ -52,125 +54,129 @@ class scrapper:
 
         return zip(spoiler_buttons,spoiler_spans)
 
-    def open_spoilers(self):
+    def open_spoilers(self) -> None:
 
         spoilers = self.find_spoilers()
 
         for find,click in spoilers:
                 ActionChains(self.driver).move_to_element(find).click(click).perform()
 
+    def scrape_old_version(self) -> pd.DataFrame:
+        
+        contents, ratings, review_titles, reviews = [], [], [], []
+
+        for page in range(self.page_limit):
+            try:
+                self.load_more_pages("ipl-load-more__button")
+            except ElementNotInteractableException:
+                continue
+            except NoSuchElementException:
+                print("Element not found. Page source structure may have changed.")
+                    
+        movie_title = self.driver.find_element(By.CLASS_NAME, "parent").text
+        
+        container = self.driver.find_elements(By.CLASS_NAME, "review-container")
+
+        for item in container:
+            contents.append(item.get_attribute("outerHTML"))         
+    
+        for content in contents:
+            soup = BeautifulSoup(content, features="html.parser")
+            if soup.find("div", class_="ipl-ratings-bar"):
+                ratings.append(str(soup.find("div", class_="ipl-ratings-bar")).split("<span>")[1].split("</span")[0])
+                review_titles.append(str(soup.find("a", class_="title")).split(">")[1].split("<")[0].split("\n")[0])
+                reviews.append(str(soup.find("div", class_="content")).split('<div class="content">')[1].split('</div>')[0].replace('<br/><br/>'," ").split(">")[1])
+        
+        num_reviews = len(ratings)
+        movie_titles = [movie_title]*num_reviews
+        
+        reviews_df = pd.DataFrame({'movie_title':movie_titles, 'review_title':review_titles, 'review':reviews, 'rating':ratings})
+        
+        print("Scraped: ", self.url)
+
+        return reviews_df
+
+    def scarpe_new_version(self) -> pd.DataFrame:
+        
+        contents, ratings, review_titles, reviews = [], [], [], []
+
+        self.open_spoilers()
+
+        for page in range(self.page_limit):
+            try:
+                self.load_more_pages("ipc-see-more.sc-33e570c-0.cMGrFN.single-page-see-more-button", "ipc-icon.ipc-icon--expand-more.ipc-btn__icon.ipc-btn__icon--post")
+                self.open_spoilers()
+            except ElementNotInteractableException:
+                continue
+            except NoSuchElementException:
+                print("Element not found. Page source structure may have changed.")
+                    
+        movie_title = self.driver.find_element(By.CLASS_NAME, "sc-b8cc654b-9.dmvgRY").text
+        
+        container = self.driver.find_elements(By.CLASS_NAME, "ipc-list-card__content")
+
+        for item in container:
+            contents.append(item.get_attribute("outerHTML"))      
+    
+        for content in contents:
+            soup = BeautifulSoup(content, features="html.parser")
+            if soup.find("span", class_="ipc-rating-star ipc-rating-star--base ipc-rating-star--otherUserAlt review-rating") and soup.find("div", class_="ipc-html-content-inner-div"):
+                ratings.append(str(soup.find("span", class_="ipc-rating-star--rating")).split("</span>")[0].split(">")[1])
+                review_titles.append(str(soup.find("span", class_="sc-77f6e511-7 lDIfw")).split("</span>")[0].split(">")[1])
+                reviews.append(str(soup.find("div", class_="ipc-html-content-inner-div")).split("</div>")[0].split('''">''')[1].replace("br/","").replace("<>",""))
+        
+        num_reviews = len(ratings)
+        movie_titles = [movie_title]*num_reviews
+        
+        reviews_df = pd.DataFrame({'movie_title':movie_titles, 'review_title':review_titles, 'review':reviews, 'rating':ratings})
+        
+        print("Scraped: ", self.url)
+
+        return reviews_df
+
     def scrape(self, url : str) -> pd.DataFrame:
 
-        self.driver.get(url)
-        version_check = None
-        contents, ratings, review_titles, reviews = [], [], [], []
+        self.url = url
+        self.driver.get(self.url)
+        parsed = False
         
-        try:
-            self.driver.find_elements(By.XPATH, self.new_version_check)
-            if self.driver.find_elements(By.XPATH, self.new_version_check):
-                version_check = "new"
-                print("version loaded: ", version_check)
-        except NoSuchElementException:
-            print("Element not found. Trying another version.")
+        print("Trying to scrape: ", url)
 
         try:
-            self.driver.find_elements(By.XPATH, self.old_version_check)
-            if self.driver.find_elements(By.XPATH, self.old_version_check):
-                version_check = "old"
-                print("version loaded: ", version_check)
+            print("Trying to parse through new version.")
+            self.driver.find_element(By.CLASS_NAME, "ipc-btn.ipc-btn--single-padding.ipc-btn--center-align-content.ipc-btn--default-height.ipc-btn--core-base.ipc-btn--theme-base.ipc-btn--on-accent2.ipc-btn--rounded.ipc-text-button.ipc-see-more__button")
         except NoSuchElementException:
-            print("Element not found. Page source structure may have changed.")
-
-        if version_check == "old":
-            load_more_button = self.driver.find_element(By.CLASS_NAME,'ipl-load-more__button')
-    
-            for page in range(self.pages):
-                try:
-                    load_more_button.click()
-                    WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.CLASS_NAME, "ipl-load-more__button")))
-                except ElementNotInteractableException:
-                    continue
-                except NoSuchElementException:
-                    print("Element not found. Page source structure may have changed.")
-                        
-            movie_title = self.driver.find_element(By.CLASS_NAME, "parent").text
-            
-            container = self.driver.find_elements(By.CLASS_NAME, "review-container")
-            
-            self.driver.quit()
-
-            for item in container:
-                contents.append(item.get_attribute("outerHTML"))         
-        
-            for content in contents:
-                soup = BeautifulSoup(content, features="html.parser")
-                if soup.find("div", class_="ipl-ratings-bar"):
-                    ratings.append(str(soup.find("div", class_="ipl-ratings-bar")).split("<span>")[1].split("</span")[0])
-                    review_titles.append(str(soup.find("a", class_="title")).split(">")[1].split("<")[0].split("\n")[0])
-                    reviews.append(str(soup.find("div", class_="content")).split('<div class="content">')[1].split('</div>')[0].replace('<br/><br/>'," ").split(">")[1])
-            
-            num_reviews = len(ratings)
-            movie_titles = [movie_title]*num_reviews
-            
-            reviews_df = pd.DataFrame({'movie_title':movie_titles, 'review_title':review_titles, 'review':reviews, 'rating':ratings})
-            
-            return reviews_df
-
-        elif version_check == "new":
-
-            self.open_spoilers()
-            
-            more_button_span = self.driver.find_element(By.XPATH, "/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]")
-            load_more_button = self.driver.find_element(By.XPATH, "/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]/button/span")
-
-            for page in range(self.pages):
-                try:
-                    ActionChains(self.driver).move_to_element(more_button_span).click(load_more_button).perform()
-                    WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, "/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]/button")))
-                    self.open_spoilers()
-                except ElementNotInteractableException:
-                    continue
-                except NoSuchElementException:
-                    print("Element not found. Page source structure may have changed.")
-                        
-            movie_title = self.driver.find_element(By.XPATH, "/html/body/div[2]/main/div/section/section/div[3]/section/section/div[2]/hgroup/h2").text
-            
-            container = self.driver.find_elements(By.CLASS_NAME, "ipc-list-card__content")
-            
-            WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.XPATH, "/html/body/div[2]/main/div/section/div/section/div/div[1]/section[1]/div[3]/div/span[1]/button")))
-
-            for item in container:
-                contents.append(item.get_attribute("outerHTML"))      
-        
-            for content in contents:
-                soup = BeautifulSoup(content, features="html.parser")
-                if soup.find("span", class_="ipc-rating-star ipc-rating-star--base ipc-rating-star--otherUserAlt review-rating") and soup.find("div", class_="ipc-html-content-inner-div"):
-                    ratings.append(str(soup.find("span", class_="ipc-rating-star--rating")).split("</span>")[0].split(">")[1])
-                    review_titles.append(str(soup.find("span", class_="sc-77f6e511-7 lDIfw")).split("</span>")[0].split(">")[1])
-                    reviews.append(str(soup.find("div", class_="ipc-html-content-inner-div")).split("</div>")[0].split('''">''')[1].replace("br/","").replace("<>",""))
-            
-            num_reviews = len(ratings)
-            movie_titles = [movie_title]*num_reviews
-            
-            reviews_df = pd.DataFrame({'movie_title':movie_titles, 'review_title':review_titles, 'review':reviews, 'rating':ratings})
-            
-            self.driver.quit()
-
-            return reviews_df
-
+            print("Element not found.")
         else:
-            print("Page source code changed")
-        
+            parsed = True
+            return self.scarpe_new_version()
+
+        try:
+            print("Trying to parse through old version.")
+            self.driver.find_element(By.CLASS_NAME, "ipl-load-more__button")
+        except NoSuchElementException:
+            print("Element not found.")
+        else:
+            parsed = True
+            return self.scrape_old_version()
+
+        if not parsed:
+            print("Either page source structure has changed or incorrect url.")
+            return pd.DataFrame()
 
     def getReviews(self) -> pd.DataFrame:
+
         for url in self.urls:
             url_data = self.scrape(url)
-            self.review_data = pd.concat([self.review_data, url_data],ignore_index=True)
-
+            if not url_data.empty:
+                self.review_data = pd.concat([self.review_data, url_data],ignore_index=True)
+        
+        self.driver.quit()
         return self.review_data
 
 if __name__ == "__main__":
     urls = ['https://www.imdb.com/title/tt1745960/reviews/?ref_=tt_ql_urv']
     ws = scrapper(urls)
     data = ws.getReviews()
-    print(data)
+    if not data.empty:
+        print(data)
