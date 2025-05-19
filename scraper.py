@@ -12,11 +12,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 import re
 from selenium.webdriver.common.action_chains import ActionChains
 
-class scrapper:
+class IMDBScrapper():
 
     page_limit = 3
 
-    def __init__(self, urls : list) -> None:
+    def __init__(self, urls: list) -> None:
         
         options = webdriver.ChromeOptions()
         options.page_load_strategy = 'normal'
@@ -175,7 +175,7 @@ class scrapper:
 
 if __name__ == "__main__":
     urls = ['https://www.imdb.com/title/tt1745960/reviews/?ref_=tt_ql_urv']
-    ws = scrapper(urls)
+    ws = IMDBScrapper(urls)
     data = ws.get_reviews()
     if not data.empty:
         print(data)
